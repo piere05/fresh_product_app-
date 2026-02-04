@@ -1,4 +1,8 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'admin_dashboard_page.dart';
 
 class AdminLoginPage extends StatefulWidget {
@@ -12,39 +16,23 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  bool _obscurePassword = true;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // ✅ EMAIL VALIDATION
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  // EMAIL VALIDATION
   bool _isValidEmail(String email) {
     return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
   }
 
-  // ✅ PASSWORD VALIDATION
+  // PASSWORD VALIDATION
   bool _isValidPassword(String password) {
     return password.length >= 8;
   }
 
-  // ✅ FORGOT PASSWORD DIALOG (Frontend Demo)
-  void _showForgotPasswordDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Forgot Password"),
-        content: const Text(
-          "A password reset link will be sent to your admin email.\n\n(Frontend demo only)",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ LOGIN FUNCTION
-  void _login() {
+  // 🔥 FIREBASE LOGIN
+  Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -62,14 +50,33 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
       return;
     }
 
-    // ✅ LOGIN SUCCESS → DASHBOARD
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const AdminDashboardPage()),
-    );
+    setState(() => _isLoading = true);
+
+    try {
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+
+      // ✅ LOGIN SUCCESS
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AdminDashboardPage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String msg = "Login failed";
+
+      if (e.code == 'user-not-found') {
+        msg = "Admin not found";
+      } else if (e.code == 'wrong-password') {
+        msg = "Incorrect password";
+      } else if (e.code == 'invalid-credential') {
+        msg = "Invalid email or password";
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
-  // ✅ DISPOSE CONTROLLERS (IMPORTANT)
   @override
   void dispose() {
     _emailController.dispose();
@@ -111,15 +118,13 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   color: Colors.redAccent,
                 ),
                 const SizedBox(height: 15),
-
                 const Text(
                   "Admin Login",
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
-
                 const SizedBox(height: 25),
 
-                // EMAIL FIELD
+                // EMAIL
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
@@ -134,7 +139,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
 
                 const SizedBox(height: 15),
 
-                // PASSWORD FIELD
+                // PASSWORD
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -161,18 +166,6 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
 
                 const SizedBox(height: 10),
 
-                // FORGOT PASSWORD
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _showForgotPasswordDialog,
-                    child: const Text(
-                      "Forgot Password?",
-                      style: TextStyle(color: Colors.redAccent),
-                    ),
-                  ),
-                ),
-
                 const SizedBox(height: 15),
 
                 // LOGIN BUTTON
@@ -180,14 +173,16 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: _login,
+                    onPressed: _isLoading ? null : _login,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.redAccent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    child: const Text("Login", style: TextStyle(fontSize: 16)),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text("Login", style: TextStyle(fontSize: 16)),
                   ),
                 ),
               ],
