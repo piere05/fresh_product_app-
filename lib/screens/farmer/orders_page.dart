@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'order_details_page.dart';
+import '../../data/models/order.dart';
+import '../../data/services/firestore_service.dart';
 
-class OrdersPage extends StatelessWidget {
+class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
+
+  @override
+  State<OrdersPage> createState() => _OrdersPageState();
+}
+
+class _OrdersPageState extends State<OrdersPage> {
+  final FirestoreService _firestoreService = FirestoreService();
+  String _search = '';
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +30,7 @@ class OrdersPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
+              onChanged: (value) => setState(() => _search = value),
               decoration: InputDecoration(
                 hintText: "Search orders...",
                 prefixIcon: const Icon(Icons.search),
@@ -34,47 +46,46 @@ class OrdersPage extends StatelessWidget {
 
           // 📋 ORDER LIST
           Expanded(
-            child: ListView(
-              children: [
-                _orderTile(
-                  context,
-                  orderId: "#ORD101",
-                  customer: "Ravi Kumar",
-                  amount: "₹1,200",
-                  status: "Pending",
-                ),
-                _orderTile(
-                  context,
-                  orderId: "#ORD102",
-                  customer: "Suresh",
-                  amount: "₹850",
-                  status: "Approved",
-                ),
-                _orderTile(
-                  context,
-                  orderId: "#ORD103",
-                  customer: "Anitha",
-                  amount: "₹640",
-                  status: "Delivered",
-                ),
-              ],
-            ),
+            child: _buildOrders(context),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildOrders(BuildContext context) {
+    final farmerId = FirebaseAuth.instance.currentUser?.uid;
+    if (farmerId == null) {
+      return const Center(child: Text("Please login to view orders"));
+    }
+    return StreamBuilder<List<Order>>(
+      stream: _firestoreService.streamFarmerOrders(farmerId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final orders = snapshot.data ?? [];
+        final filtered = orders.where((order) {
+          return _search.isEmpty ||
+              order.id.toLowerCase().contains(_search.toLowerCase());
+        }).toList();
+        if (filtered.isEmpty) {
+          return const Center(child: Text("No orders found"));
+        }
+        return ListView.builder(
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            return _orderTile(context, filtered[index]);
+          },
+        );
+      },
+    );
+  }
+
   // 🧾 ORDER TILE
-  Widget _orderTile(
-    BuildContext context, {
-    required String orderId,
-    required String customer,
-    required String amount,
-    required String status,
-  }) {
+  Widget _orderTile(BuildContext context, Order order) {
     Color statusColor;
-    switch (status) {
+    switch (order.status) {
       case "Approved":
         statusColor = Colors.green;
         break;
@@ -94,15 +105,17 @@ class OrdersPage extends StatelessWidget {
           child: const Icon(Icons.receipt_long, color: Colors.deepPurple),
         ),
         title: Text(
-          orderId,
+          "#${order.id.substring(0, 6).toUpperCase()}",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text("Customer: $customer\nAmount: $amount"),
+        subtitle: Text(
+          "Customer: ${order.userId}\nAmount: ₹${order.total.toStringAsFixed(0)}",
+        ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              status,
+              order.status,
               style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
@@ -112,7 +125,9 @@ class OrdersPage extends StatelessWidget {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => OrderDetailsPage()),
+            MaterialPageRoute(
+              builder: (_) => OrderDetailsPage(order: order),
+            ),
           );
         },
       ),

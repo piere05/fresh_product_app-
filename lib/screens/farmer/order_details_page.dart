@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../data/models/order.dart';
+import '../../data/services/firestore_service.dart';
 
 class OrderDetailsPage extends StatelessWidget {
-  const OrderDetailsPage({super.key});
+  OrderDetailsPage({super.key, required this.order});
+
+  final Order order;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -20,11 +25,14 @@ class OrderDetailsPage extends StatelessWidget {
             _sectionCard(
               title: "Order Summary",
               child: Column(
-                children: const [
-                  _InfoRow("Order ID", "#ORD101"),
-                  _InfoRow("Order Date", "18 Aug 2026"),
-                  _InfoRow("Status", "Pending"),
-                  _InfoRow("Payment", "Cash on Delivery"),
+                children: [
+                  _InfoRow(
+                    "Order ID",
+                    "#${order.id.substring(0, 6).toUpperCase()}",
+                  ),
+                  _InfoRow("Order Date", _formatDate(order.createdAt)),
+                  _InfoRow("Status", order.status),
+                  _InfoRow("Payment", order.paymentMethod),
                 ],
               ),
             ),
@@ -35,24 +43,8 @@ class OrderDetailsPage extends StatelessWidget {
             _sectionCard(
               title: "Customer Details",
               child: Column(
-                children: const [
-                  _InfoRow("Name", "Ravi Kumar"),
-                  _InfoRow("Email", "ravi@gmail.com"),
-                  _InfoRow("Phone", "+91 98765 43210"),
-                  _InfoRow("Address", "Chennai, Tamil Nadu"),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            // 👨‍🌾 FARMER DETAILS
-            _sectionCard(
-              title: "Farmer Details",
-              child: Column(
-                children: const [
-                  _InfoRow("Name", "Ramesh Kumar"),
-                  _InfoRow("Location", "Coimbatore"),
+                children: [
+                  _InfoRow("User ID", order.userId),
                 ],
               ),
             ),
@@ -63,11 +55,19 @@ class OrderDetailsPage extends StatelessWidget {
             _sectionCard(
               title: "Products",
               child: Column(
-                children: const [
-                  _ProductRow("Tomatoes", "2 kg", "₹80"),
-                  _ProductRow("Onions", "1 kg", "₹40"),
-                  Divider(),
-                  _InfoRow("Total Amount", "₹120"),
+                children: [
+                  ...order.items.map(
+                    (item) => _ProductRow(
+                      item.name,
+                      "${item.quantity} ${item.unit}",
+                      "₹${item.total.toStringAsFixed(0)}",
+                    ),
+                  ),
+                  const Divider(),
+                  _InfoRow(
+                    "Total Amount",
+                    "₹${order.total.toStringAsFixed(0)}",
+                  ),
                 ],
               ),
             ),
@@ -79,8 +79,15 @@ class OrderDetailsPage extends StatelessWidget {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      _showSnack(context, "Order Approved (Demo)");
+                    onPressed: () async {
+                      await _firestoreService.updateOrderStatus(
+                        orderId: order.id,
+                        status: "Approved",
+                      );
+                      if (!context.mounted) {
+                        return;
+                      }
+                      _showSnack(context, "Order approved");
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
@@ -94,8 +101,15 @@ class OrderDetailsPage extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      _showSnack(context, "Order Rejected (Demo)");
+                    onPressed: () async {
+                      await _firestoreService.updateOrderStatus(
+                        orderId: order.id,
+                        status: "Cancelled",
+                      );
+                      if (!context.mounted) {
+                        return;
+                      }
+                      _showSnack(context, "Order cancelled");
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
@@ -115,8 +129,15 @@ class OrderDetailsPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  _showSnack(context, "Order Delivered (Demo)");
+                onPressed: () async {
+                  await _firestoreService.updateOrderStatus(
+                    orderId: order.id,
+                    status: "Delivered",
+                  );
+                  if (!context.mounted) {
+                    return;
+                  }
+                  _showSnack(context, "Order delivered");
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
@@ -192,15 +213,32 @@ class OrderDetailsPage extends StatelessWidget {
             child: const Text("No"),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              await _firestoreService.updateOrderStatus(
+                orderId: order.id,
+                status: "Cancelled",
+              );
+              if (!context.mounted) {
+                return;
+              }
               Navigator.pop(context);
-              Navigator.pop(context);
+              _showSnack(context, "Order cancelled");
             },
             child: const Text("Yes, Cancel"),
           ),
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'N/A';
+    }
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
   }
 }
 

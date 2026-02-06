@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/models/product.dart';
+import '../../data/services/firestore_service.dart';
 
 class StockManagementPage extends StatefulWidget {
   const StockManagementPage({super.key});
@@ -9,23 +12,10 @@ class StockManagementPage extends StatefulWidget {
 
 class _StockManagementPageState extends State<StockManagementPage> {
   String _search = "";
-
-  // 📦 DEMO STOCK DATA (Frontend only)
-  final List<Map<String, dynamic>> _stocks = [
-    {"name": "Tomatoes", "qty": 5, "unit": "kg"},
-    {"name": "Onions", "qty": 25, "unit": "kg"},
-    {"name": "Apples", "qty": 8, "unit": "kg"},
-    {"name": "Potatoes", "qty": 40, "unit": "kg"},
-  ];
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
-    final filteredStock = _stocks.where((item) {
-      return item["name"].toString().toLowerCase().contains(
-        _search.toLowerCase(),
-      );
-    }).toList();
-
     return Scaffold(
       backgroundColor: const Color(0xFFF1F8E9),
       appBar: AppBar(
@@ -57,92 +47,112 @@ class _StockManagementPageState extends State<StockManagementPage> {
 
           // 📦 STOCK LIST
           Expanded(
-            child: filteredStock.isEmpty
-                ? const Center(
-                    child: Text(
-                      "No products found",
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: filteredStock.length,
-                    itemBuilder: (context, index) {
-                      final item = filteredStock[index];
-                      final int qty = item["qty"];
-                      final bool lowStock = qty <= 10;
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: lowStock
-                                ? Colors.red.shade100
-                                : Colors.green.shade100,
-                            child: Icon(
-                              Icons.inventory,
-                              color: lowStock ? Colors.red : Colors.green,
-                            ),
-                          ),
-                          title: Text(
-                            item["name"],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text("Quantity: $qty ${item["unit"]}"),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                lowStock ? "Low Stock" : "Available",
-                                style: TextStyle(
-                                  color: lowStock ? Colors.red : Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.remove,
-                                      color: Colors.orange,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        if (item["qty"] > 0) {
-                                          item["qty"]--;
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.add,
-                                      color: Colors.green,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        item["qty"]++;
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+            child: _buildStockList(context),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStockList(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return const Center(child: Text("Please login to manage stock"));
+    }
+
+    return StreamBuilder<List<Product>>(
+      stream: _firestoreService.streamFarmerProducts(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final products = snapshot.data ?? [];
+        final filteredStock = products.where((item) {
+          return item.name.toLowerCase().contains(_search.toLowerCase());
+        }).toList();
+        if (filteredStock.isEmpty) {
+          return const Center(
+            child: Text(
+              "No products found",
+              style: TextStyle(fontSize: 16),
+            ),
+          );
+        }
+        return ListView.builder(
+          itemCount: filteredStock.length,
+          itemBuilder: (context, index) {
+            final item = filteredStock[index];
+            final int qty = item.quantity.toInt();
+            final bool lowStock = qty <= 10;
+
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: lowStock
+                      ? Colors.red.shade100
+                      : Colors.green.shade100,
+                  child: Icon(
+                    Icons.inventory,
+                    color: lowStock ? Colors.red : Colors.green,
+                  ),
+                ),
+                title: Text(
+                  item.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text("Quantity: $qty ${item.unit}"),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      lowStock ? "Low Stock" : "Available",
+                      style: TextStyle(
+                        color: lowStock ? Colors.red : Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.remove,
+                            color: Colors.orange,
+                          ),
+                          onPressed: () async {
+                            final nextQty = qty > 0 ? qty - 1 : 0;
+                            await _firestoreService.updateProduct(
+                              productId: item.id,
+                              updates: {'quantity': nextQty},
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add,
+                            color: Colors.green,
+                          ),
+                          onPressed: () async {
+                            await _firestoreService.updateProduct(
+                              productId: item.id,
+                              updates: {'quantity': qty + 1},
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

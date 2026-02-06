@@ -1,9 +1,12 @@
 // ignore_for_file: prefer_const_constructors_in_immutables
 
 import 'package:flutter/material.dart';
+import '../../data/models/order.dart';
 
 class OrderDetailsPage extends StatelessWidget {
-  OrderDetailsPage({super.key});
+  OrderDetailsPage({super.key, required this.order});
+
+  final Order order;
 
   @override
   Widget build(BuildContext context) {
@@ -23,19 +26,21 @@ class OrderDetailsPage extends StatelessWidget {
               title: "Order Status",
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
+                children: [
                   Text(
-                    "Delivered",
+                    order.status,
                     style: TextStyle(
-                      color: Colors.green,
+                      color: order.status == "Delivered"
+                          ? Colors.green
+                          : Colors.orange,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
                   ),
                   Chip(
-                    label: Text("Paid"),
-                    backgroundColor: Color(0xFFDFF5E3),
-                    labelStyle: TextStyle(color: Colors.green),
+                    label: Text(order.paymentMethod),
+                    backgroundColor: const Color(0xFFDFF5E3),
+                    labelStyle: const TextStyle(color: Colors.green),
                   ),
                 ],
               ),
@@ -47,10 +52,13 @@ class OrderDetailsPage extends StatelessWidget {
             _sectionCard(
               title: "Order Information",
               child: Column(
-                children: const [
-                  _InfoRow("Order ID", "#ORD101"),
-                  _InfoRow("Order Date", "15 Aug 2026"),
-                  _InfoRow("Payment", "UPI"),
+                children: [
+                  _InfoRow(
+                    "Order ID",
+                    "#${order.id.substring(0, 6).toUpperCase()}",
+                  ),
+                  _InfoRow("Order Date", _formatDate(order.createdAt)),
+                  _InfoRow("Payment", order.paymentMethod),
                 ],
               ),
             ),
@@ -61,11 +69,19 @@ class OrderDetailsPage extends StatelessWidget {
             _sectionCard(
               title: "Products",
               child: Column(
-                children: const [
-                  _ProductRow("Tomatoes", "2 kg", "₹80"),
-                  _ProductRow("Onions", "1 kg", "₹40"),
-                  Divider(),
-                  _InfoRow("Total Amount", "₹120"),
+                children: [
+                  ...order.items.map(
+                    (item) => _ProductRow(
+                      item.name,
+                      "${item.quantity} ${item.unit}",
+                      "₹${item.total.toStringAsFixed(0)}",
+                    ),
+                  ),
+                  const Divider(),
+                  _InfoRow(
+                    "Total Amount",
+                    "₹${order.total.toStringAsFixed(0)}",
+                  ),
                 ],
               ),
             ),
@@ -75,9 +91,9 @@ class OrderDetailsPage extends StatelessWidget {
             // 🚚 DELIVERY ADDRESS
             _sectionCard(
               title: "Delivery Address",
-              child: const Text(
-                "Ravi Kumar\nChennai, Tamil Nadu\n+91 98765 43210",
-                style: TextStyle(height: 1.5),
+              child: Text(
+                order.userId,
+                style: const TextStyle(height: 1.5),
               ),
             ),
 
@@ -96,7 +112,7 @@ class OrderDetailsPage extends StatelessWidget {
                   ),
                 ),
                 onPressed: () {
-                  _showSnack(context, "Invoice download (Demo)");
+                  _showSnack(context, "Invoice download coming soon");
                 },
               ),
             ),
@@ -115,7 +131,7 @@ class OrderDetailsPage extends StatelessWidget {
                   ),
                 ),
                 onPressed: () {
-                  _showSnack(context, "Support page (Demo)");
+                  _showSnack(context, "Support coming soon");
                 },
               ),
             ),
@@ -152,6 +168,16 @@ class OrderDetailsPage extends StatelessWidget {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'N/A';
+    }
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
   }
 }
 

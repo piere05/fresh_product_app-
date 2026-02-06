@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'add_product_page.dart';
+import '../../data/models/product.dart';
+import '../../data/services/firestore_service.dart';
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});
@@ -9,35 +11,11 @@ class ProductsPage extends StatefulWidget {
 }
 
 class _ProductsPageState extends State<ProductsPage> {
-  final List<Map<String, String>> _products = [
-    {
-      "name": "Tomatoes",
-      "category": "Vegetables",
-      "price": "₹40 / kg",
-      "stock": "In Stock",
-    },
-    {
-      "name": "Onions",
-      "category": "Vegetables",
-      "price": "₹30 / kg",
-      "stock": "Out of Stock",
-    },
-    {
-      "name": "Apples",
-      "category": "Fruits",
-      "price": "₹120 / kg",
-      "stock": "In Stock",
-    },
-  ];
-
+  final FirestoreService _firestoreService = FirestoreService();
   String _search = "";
 
   @override
   Widget build(BuildContext context) {
-    final filteredProducts = _products.where((product) {
-      return product["name"]!.toLowerCase().contains(_search.toLowerCase());
-    }).toList();
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Products"),
@@ -79,26 +57,29 @@ class _ProductsPageState extends State<ProductsPage> {
 
           // LIST
           Expanded(
-            child: filteredProducts.isEmpty
-                ? const Center(child: Text("No products found"))
-                : ListView.builder(
-                    itemCount: filteredProducts.length,
-                    itemBuilder: (context, index) {
-                      final product = filteredProducts[index];
-                      final actualIndex = _products.indexOf(
-                        product,
-                      ); // important
-
-                      return _productCard(
-                        name: product["name"]!,
-                        category: product["category"]!,
-                        price: product["price"]!,
-                        stock: product["stock"]!,
-                        onEdit: () => _editProduct(actualIndex),
-                        onDelete: () => _deleteProduct(actualIndex),
-                      );
-                    },
-                  ),
+            child: StreamBuilder<List<Product>>(
+              stream: _firestoreService.streamProducts(search: _search),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final products = snapshot.data ?? [];
+                if (products.isEmpty) {
+                  return const Center(child: Text("No products found"));
+                }
+                return ListView.builder(
+                  itemCount: products.length,
+                  itemBuilder: (context, index) {
+                    final product = products[index];
+                    return _productCard(
+                      product: product,
+                      onEdit: () => _editProduct(product),
+                      onDelete: () => _deleteProduct(product.id),
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -107,27 +88,30 @@ class _ProductsPageState extends State<ProductsPage> {
 
   // PRODUCT CARD
   Widget _productCard({
-    required String name,
-    required String category,
-    required String price,
-    required String stock,
+    required Product product,
     required VoidCallback onEdit,
     required VoidCallback onDelete,
   }) {
-    final bool inStock = stock == "In Stock";
+    final bool inStock = product.inStock;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: const Icon(Icons.shopping_bag, color: Colors.orange),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("Category: $category\nPrice: $price"),
+        title: Text(
+          product.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          "Category: ${product.category}\n"
+          "Price: ₹${product.price.toStringAsFixed(0)} / ${product.unit}",
+        ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              stock,
+              inStock ? "In Stock" : "Out of Stock",
               style: TextStyle(
                 color: inStock ? Colors.green : Colors.red,
                 fontWeight: FontWeight.bold,
@@ -153,13 +137,11 @@ class _ProductsPageState extends State<ProductsPage> {
   }
 
   // ✏️ EDIT PRODUCT (REAL)
-  void _editProduct(int index) {
-    final nameCtrl = TextEditingController(text: _products[index]["name"]);
-    final categoryCtrl = TextEditingController(
-      text: _products[index]["category"],
-    );
-    final priceCtrl = TextEditingController(text: _products[index]["price"]);
-    String stock = _products[index]["stock"]!;
+  void _editProduct(Product product) {
+    final nameCtrl = TextEditingController(text: product.name);
+    final categoryCtrl = TextEditingController(text: product.category);
+    final priceCtrl = TextEditingController(text: product.price.toString());
+    String stock = product.inStock ? "In Stock" : "Out of Stock";
 
     showDialog(
       context: context,
@@ -202,15 +184,19 @@ class _ProductsPageState extends State<ProductsPage> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _products[index] = {
-                  "name": nameCtrl.text,
-                  "category": categoryCtrl.text,
-                  "price": priceCtrl.text,
-                  "stock": stock,
-                };
-              });
+            onPressed: () async {
+              await _firestoreService.updateProduct(
+                productId: product.id,
+                updates: {
+                  'name': nameCtrl.text.trim(),
+                  'category': categoryCtrl.text.trim(),
+                  'price': double.tryParse(priceCtrl.text.trim()) ?? 0,
+                  'inStock': stock == "In Stock",
+                },
+              );
+              if (!mounted) {
+                return;
+              }
               Navigator.pop(context);
             },
             child: const Text("Update"),
@@ -221,7 +207,7 @@ class _ProductsPageState extends State<ProductsPage> {
   }
 
   // 🗑 DELETE PRODUCT
-  void _deleteProduct(int index) {
-    setState(() => _products.removeAt(index));
+  void _deleteProduct(String productId) {
+    _firestoreService.deleteProduct(productId);
   }
 }

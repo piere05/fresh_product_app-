@@ -2,9 +2,20 @@
 
 import 'package:flutter/material.dart';
 import 'order_details_page.dart';
+import '../../data/models/order.dart';
+import '../../data/services/firestore_service.dart';
 
-class OrdersPage extends StatelessWidget {
+class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key}); // NOT const
+
+  @override
+  State<OrdersPage> createState() => _OrdersPageState();
+}
+
+class _OrdersPageState extends State<OrdersPage> {
+  final FirestoreService _firestoreService = FirestoreService();
+  String _search = '';
+  String _statusFilter = 'All';
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +31,7 @@ class OrdersPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
+              onChanged: (value) => setState(() => _search = value),
               decoration: InputDecoration(
                 hintText: "Search orders...",
                 prefixIcon: const Icon(Icons.search),
@@ -39,11 +51,31 @@ class OrdersPage extends StatelessWidget {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: const [
-                _StatusChip("All", Colors.grey),
-                _StatusChip("Pending", Colors.orange),
-                _StatusChip("Approved", Colors.green),
-                _StatusChip("Delivered", Colors.blue),
+              children: [
+                _StatusChip(
+                  label: "All",
+                  color: Colors.grey,
+                  selected: _statusFilter == 'All',
+                  onTap: () => setState(() => _statusFilter = 'All'),
+                ),
+                _StatusChip(
+                  label: "Pending",
+                  color: Colors.orange,
+                  selected: _statusFilter == 'Pending',
+                  onTap: () => setState(() => _statusFilter = 'Pending'),
+                ),
+                _StatusChip(
+                  label: "Approved",
+                  color: Colors.green,
+                  selected: _statusFilter == 'Approved',
+                  onTap: () => setState(() => _statusFilter = 'Approved'),
+                ),
+                _StatusChip(
+                  label: "Delivered",
+                  color: Colors.blue,
+                  selected: _statusFilter == 'Delivered',
+                  onTap: () => setState(() => _statusFilter = 'Delivered'),
+                ),
               ],
             ),
           ),
@@ -52,30 +84,30 @@ class OrdersPage extends StatelessWidget {
 
           // 📋 ORDERS LIST
           Expanded(
-            child: ListView(
-              children: [
-                _orderCard(
-                  context,
-                  orderId: "#ORD1001",
-                  customer: "Ravi Kumar",
-                  amount: "₹120",
-                  status: "Pending",
-                ),
-                _orderCard(
-                  context,
-                  orderId: "#ORD1002",
-                  customer: "Suresh",
-                  amount: "₹340",
-                  status: "Approved",
-                ),
-                _orderCard(
-                  context,
-                  orderId: "#ORD1003",
-                  customer: "Anitha",
-                  amount: "₹220",
-                  status: "Delivered",
-                ),
-              ],
+            child: StreamBuilder<List<Order>>(
+              stream: _firestoreService.streamAllOrders(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final orders = snapshot.data ?? [];
+                final filtered = orders.where((order) {
+                  final matchesStatus =
+                      _statusFilter == 'All' || order.status == _statusFilter;
+                  final matchesSearch = _search.isEmpty ||
+                      order.id.toLowerCase().contains(_search.toLowerCase());
+                  return matchesStatus && matchesSearch;
+                }).toList();
+                if (filtered.isEmpty) {
+                  return const Center(child: Text("No orders found"));
+                }
+                return ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    return _orderCard(context, filtered[index]);
+                  },
+                );
+              },
             ),
           ),
         ],
@@ -84,15 +116,9 @@ class OrdersPage extends StatelessWidget {
   }
 
   // ORDER CARD
-  Widget _orderCard(
-    BuildContext context, {
-    required String orderId,
-    required String customer,
-    required String amount,
-    required String status,
-  }) {
+  Widget _orderCard(BuildContext context, Order order) {
     Color statusColor;
-    switch (status) {
+    switch (order.status) {
       case "Approved":
         statusColor = Colors.green;
         break;
@@ -112,15 +138,17 @@ class OrdersPage extends StatelessWidget {
           child: const Icon(Icons.receipt_long, color: Colors.deepPurple),
         ),
         title: Text(
-          orderId,
+          "#${order.id.substring(0, 6).toUpperCase()}",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text("Customer: $customer\nAmount: $amount"),
+        subtitle: Text(
+          "Customer: ${order.userId}\nAmount: ₹${order.total.toStringAsFixed(0)}",
+        ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              status,
+              order.status,
               style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
@@ -130,7 +158,9 @@ class OrdersPage extends StatelessWidget {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => OrderDetailsPage()),
+            MaterialPageRoute(
+              builder: (_) => OrderDetailsPage(order: order),
+            ),
           );
         },
       ),
@@ -142,16 +172,26 @@ class OrdersPage extends StatelessWidget {
 class _StatusChip extends StatelessWidget {
   final String label;
   final Color color;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _StatusChip(this.label, this.color);
+  const _StatusChip({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: Chip(
+      child: ChoiceChip(
         label: Text(label),
-        backgroundColor: color.withOpacity(0.15),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        selectedColor: color.withOpacity(0.2),
+        backgroundColor: color.withOpacity(0.1),
         labelStyle: TextStyle(color: color),
       ),
     );

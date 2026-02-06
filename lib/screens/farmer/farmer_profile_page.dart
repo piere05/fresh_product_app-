@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/models/app_user.dart';
+import '../../data/services/firestore_service.dart';
 
 class FarmerProfilePage extends StatelessWidget {
-  const FarmerProfilePage({super.key});
+  FarmerProfilePage({super.key});
+
+  final FirestoreService _firestoreService = FirestoreService();
 
   // 🔐 Logout confirmation
   void _confirmLogout(BuildContext context) {
@@ -16,7 +21,11 @@ class FarmerProfilePage extends StatelessWidget {
             child: const Text("Cancel"),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (!context.mounted) {
+                return;
+              }
               Navigator.pop(context);
               Navigator.pop(context); // back to login
             },
@@ -29,6 +38,7 @@ class FarmerProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       backgroundColor: const Color(0xFFE8F5E9),
       appBar: AppBar(
@@ -48,43 +58,60 @@ class FarmerProfilePage extends StatelessWidget {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.green,
-                      child: Icon(
-                        Icons.agriculture,
-                        size: 50,
-                        color: Colors.white,
+                child: userId == null
+                    ? const Text("Please login to view profile")
+                    : StreamBuilder<AppUser?>(
+                        stream: _firestoreService.streamUser(userId),
+                        builder: (context, snapshot) {
+                          final user = snapshot.data;
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+                          if (user == null) {
+                            return const Text("Profile not found");
+                          }
+                          return Column(
+                            children: [
+                              const CircleAvatar(
+                                radius: 50,
+                                backgroundColor: Colors.green,
+                                child: Icon(
+                                  Icons.agriculture,
+                                  size: 50,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 15),
+                              Text(
+                                user.name,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                user.email,
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                              const SizedBox(height: 15),
+                              _infoRow(
+                                Icons.phone,
+                                "Phone",
+                                user.phone ?? 'N/A',
+                              ),
+                              _infoRow(
+                                Icons.verified_user,
+                                "Status",
+                                user.isApproved ? "Approved" : "Pending",
+                              ),
+                            ],
+                          );
+                        },
                       ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    const Text(
-                      "Ramesh Kumar",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 5),
-
-                    const Text(
-                      "farmer@email.com",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    _infoRow(Icons.phone, "Phone", "+91 98765 43210"),
-                    _infoRow(Icons.location_on, "Location", "Coimbatore"),
-                    _infoRow(Icons.eco, "Farm Type", "Organic"),
-                    _infoRow(Icons.verified_user, "Status", "Approved"),
-                  ],
-                ),
               ),
             ),
 
@@ -96,7 +123,7 @@ class FarmerProfilePage extends StatelessWidget {
               title: "Edit Profile",
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Edit profile (Demo)")),
+                  const SnackBar(content: Text("Edit profile coming soon")),
                 );
               },
             ),
@@ -106,7 +133,7 @@ class FarmerProfilePage extends StatelessWidget {
               title: "Change Password",
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Change password (Demo)")),
+                  const SnackBar(content: Text("Change password coming soon")),
                 );
               },
             ),
@@ -116,7 +143,7 @@ class FarmerProfilePage extends StatelessWidget {
               title: "Help & Support",
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Support clicked (Demo)")),
+                  const SnackBar(content: Text("Support coming soon")),
                 );
               },
             ),

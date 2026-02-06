@@ -119,7 +119,9 @@ class MyOrdersPage extends StatelessWidget {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => OrderDetailsPage()),
+            MaterialPageRoute(
+              builder: (_) => OrderDetailsPage(order: order),
+            ),
           );
         },
       ),

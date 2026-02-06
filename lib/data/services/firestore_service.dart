@@ -6,6 +6,7 @@ import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../models/product.dart';
 import '../models/wishlist_item.dart';
+import '../models/user_role.dart';
 
 class FirestoreService {
   FirestoreService({FirebaseFirestore? firestore})
@@ -55,6 +56,13 @@ class FirestoreService {
 
   Future<void> addProduct(Product product) async {
     await _products.add(product.toMap());
+  }
+
+  Future<void> updateProduct({
+    required String productId,
+    required Map<String, dynamic> updates,
+  }) async {
+    await _products.doc(productId).update(updates);
   }
 
   Future<void> deleteProduct(String productId) async {
@@ -267,5 +275,88 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(Order.fromDoc).toList());
+  }
+
+  Stream<List<Order>> streamAllOrders() {
+    return _orders
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map(Order.fromDoc).toList());
+  }
+
+  Stream<List<Order>> streamFarmerOrders(String farmerId) {
+    return _orders
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      final orders = snapshot.docs.map(Order.fromDoc).toList();
+      return orders
+          .where(
+            (order) => order.items.any((item) => item.farmerId == farmerId),
+          )
+          .toList();
+    });
+  }
+
+  Future<void> updateOrderStatus({
+    required String orderId,
+    required String status,
+  }) async {
+    await _orders.doc(orderId).update({'status': status});
+  }
+
+  Stream<List<AppUser>> streamUsers({
+    String? search,
+    String? role,
+    String? status,
+  }) {
+    return _users.snapshots().map((snapshot) {
+      final users = snapshot.docs.map(AppUser.fromDoc).toList();
+      return users.where((user) {
+        final matchesSearch = search == null ||
+            search.isEmpty ||
+            user.name.toLowerCase().contains(search.toLowerCase()) ||
+            user.email.toLowerCase().contains(search.toLowerCase());
+        final matchesRole = role == null || role == 'All'
+            ? true
+            : userRoleToString(user.role).toLowerCase() ==
+                role.toLowerCase();
+        final matchesStatus = status == null || status == 'All'
+            ? true
+            : status == 'Blocked'
+            ? user.isBlocked
+            : status == 'Pending'
+            ? !user.isApproved
+            : !user.isBlocked;
+        return matchesSearch && matchesRole && matchesStatus;
+      }).toList();
+    });
+  }
+
+  Stream<AppUser?> streamUser(String userId) {
+    return _users.doc(userId).snapshots().map((doc) {
+      if (!doc.exists) {
+        return null;
+      }
+      return AppUser.fromDoc(doc);
+    });
+  }
+
+  Future<void> updateUserStatus({
+    required String userId,
+    required bool isApproved,
+    required bool isBlocked,
+  }) async {
+    await _users.doc(userId).update({
+      'isApproved': isApproved,
+      'isBlocked': isBlocked,
+    });
+  }
+
+  Future<void> updateUserProfile({
+    required String userId,
+    required Map<String, dynamic> updates,
+  }) async {
+    await _users.doc(userId).update(updates);
   }
 }
