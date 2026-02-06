@@ -1,7 +1,10 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'checkout_page.dart';
+import '../../data/models/cart_item.dart';
+import '../../data/services/firestore_service.dart';
 
 class CartPage extends StatefulWidget {
   const CartPage({super.key});
@@ -11,18 +14,7 @@ class CartPage extends StatefulWidget {
 }
 
 class _CartPageState extends State<CartPage> {
-  // 🛒 DEMO CART ITEMS (Frontend only)
-  final List<Map<String, dynamic>> _cartItems = [
-    {"name": "Tomatoes", "price": 40, "qty": 2},
-    {"name": "Onions", "price": 30, "qty": 1},
-  ];
-
-  int get _totalAmount {
-    return _cartItems.fold(
-      0,
-      (sum, item) => sum + (item["price"] * item["qty"]) as int,
-    );
-  }
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -33,90 +25,115 @@ class _CartPageState extends State<CartPage> {
         backgroundColor: Colors.blue,
         centerTitle: true,
       ),
-      body: _cartItems.isEmpty
-          ? const Center(
-              child: Text("Your cart is empty", style: TextStyle(fontSize: 16)),
-            )
-          : Column(
-              children: [
-                // 🛒 CART LIST
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _cartItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _cartItems[index];
-                      return _cartItemCard(item, index);
-                    },
-                  ),
-                ),
+      body: _buildCartBody(context),
+    );
+  }
 
-                // 💰 TOTAL & CHECKOUT
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                      ),
-                    ],
+  Widget _buildCartBody(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return const Center(child: Text("Please login to view your cart"));
+    }
+
+    return StreamBuilder<List<CartItem>>(
+      stream: _firestoreService.streamCart(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final cartItems = snapshot.data ?? [];
+        if (cartItems.isEmpty) {
+          return const Center(
+            child: Text("Your cart is empty", style: TextStyle(fontSize: 16)),
+          );
+        }
+        final totalAmount = cartItems.fold<double>(
+          0,
+          (sum, item) => sum + item.total,
+        );
+        return Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                itemCount: cartItems.length,
+                itemBuilder: (context, index) {
+                  final item = cartItems[index];
+                  return _cartItemCard(userId, item);
+                },
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
                   ),
-                  child: Column(
+                ],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Total Amount",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            "₹$_totalAmount",
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                          ),
-                        ],
+                      const Text(
+                        "Total Amount",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      const SizedBox(height: 15),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => CheckoutPage()),
-                            );
-                          },
-                          child: const Text(
-                            "Proceed to Checkout",
-                            style: TextStyle(fontSize: 16),
-                          ),
+                      Text(
+                        "₹${totalAmount.toStringAsFixed(0)}",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 15),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CheckoutPage(
+                              cartItems: cartItems,
+                              totalAmount: totalAmount,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        "Proceed to Checkout",
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ],
+        );
+      },
     );
   }
 
   // 🧾 CART ITEM CARD
-  Widget _cartItemCard(Map<String, dynamic> item, int index) {
+  Widget _cartItemCard(String userId, CartItem item) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -126,11 +143,12 @@ class _CartPageState extends State<CartPage> {
           child: const Icon(Icons.shopping_bag, color: Colors.blue),
         ),
         title: Text(
-          item["name"],
+          item.name,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(
-          "₹${item["price"]} x ${item["qty"]} = ₹${item["price"] * item["qty"]}",
+          "₹${item.price.toStringAsFixed(0)} x ${item.quantity} = "
+          "₹${item.total.toStringAsFixed(0)}",
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -138,34 +156,37 @@ class _CartPageState extends State<CartPage> {
             // ➖
             IconButton(
               icon: const Icon(Icons.remove),
-              onPressed: () {
-                setState(() {
-                  if (item["qty"] > 1) {
-                    item["qty"]--;
-                  }
-                });
+              onPressed: () async {
+                await _firestoreService.updateCartItem(
+                  userId: userId,
+                  cartItemId: item.id,
+                  quantity: item.quantity - 1,
+                );
               },
             ),
 
-            Text("${item["qty"]}"),
+            Text("${item.quantity}"),
 
             // ➕
             IconButton(
               icon: const Icon(Icons.add),
-              onPressed: () {
-                setState(() {
-                  item["qty"]++;
-                });
+              onPressed: () async {
+                await _firestoreService.updateCartItem(
+                  userId: userId,
+                  cartItemId: item.id,
+                  quantity: item.quantity + 1,
+                );
               },
             ),
 
             // 🗑 REMOVE
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () {
-                setState(() {
-                  _cartItems.removeAt(index);
-                });
+              onPressed: () async {
+                await _firestoreService.removeCartItem(
+                  userId: userId,
+                  cartItemId: item.id,
+                );
               },
             ),
           ],

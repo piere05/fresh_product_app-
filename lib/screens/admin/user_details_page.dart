@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import '../../data/models/app_user.dart';
+import '../../data/services/firestore_service.dart';
+import '../../data/models/user_role.dart';
 
 class UserDetailsPage extends StatelessWidget {
-  const UserDetailsPage({super.key}); // NOT const
+  UserDetailsPage({super.key, required this.user}); // NOT const
+
+  final AppUser user;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
+    final statusLabel = _statusLabel(user);
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -32,28 +39,23 @@ class UserDetailsPage extends StatelessWidget {
                       child: Icon(Icons.person, size: 48, color: Colors.white),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      "Ravi Kumar",
-                      style: TextStyle(
+                    Text(
+                      user.name,
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      "ravi@gmail.com",
-                      style: TextStyle(color: Colors.grey),
+                    Text(
+                      user.email,
+                      style: const TextStyle(color: Colors.grey),
                     ),
                     const Divider(height: 30),
 
-                    _infoRow(Icons.phone, "Phone", "+91 98765 43210"),
-                    _infoRow(Icons.badge, "Role", "Customer"),
-                    _infoRow(Icons.verified_user, "Status", "Active"),
-                    _infoRow(
-                      Icons.access_time,
-                      "Last Login",
-                      "Today, 10:30 AM",
-                    ),
+                    _infoRow(Icons.phone, "Phone", user.phone ?? 'N/A'),
+                    _infoRow(Icons.badge, "Role", _roleLabel(user.role)),
+                    _infoRow(Icons.verified_user, "Status", statusLabel),
                   ],
                 ),
               ),
@@ -76,7 +78,10 @@ class UserDetailsPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () => _showSnack(context, "Change role (Demo)"),
+                    onPressed: () => _showSnack(
+                      context,
+                      "Role change coming soon",
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -91,29 +96,10 @@ class UserDetailsPage extends StatelessWidget {
                       ),
                     ),
                     onPressed: () =>
-                        _showSnack(context, "Password reset sent (Demo)"),
+                        _showSnack(context, "Password reset coming soon"),
                   ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // 🔐 SECURITY
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.devices),
-                label: const Text("Logout from all devices"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () =>
-                    _showSnack(context, "Logged out from all devices (Demo)"),
-              ),
             ),
 
             const SizedBox(height: 12),
@@ -122,10 +108,10 @@ class UserDetailsPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                icon: const Icon(Icons.block),
-                label: const Text("Block User"),
+                icon: Icon(user.isBlocked ? Icons.lock_open : Icons.block),
+                label: Text(user.isBlocked ? "Unblock User" : "Block User"),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
+                  backgroundColor: user.isBlocked ? Colors.green : Colors.red,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -186,9 +172,11 @@ class UserDetailsPage extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Block User"),
-        content: const Text(
-          "This user will no longer be able to access the system.\n\nAre you sure?",
+        title: Text(user.isBlocked ? "Unblock User" : "Block User"),
+        content: Text(
+          user.isBlocked
+              ? "This user will regain access. Continue?"
+              : "This user will no longer be able to access the system.\n\nAre you sure?",
         ),
         actions: [
           TextButton(
@@ -196,15 +184,46 @@ class UserDetailsPage extends StatelessWidget {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
+            style: ElevatedButton.styleFrom(
+              backgroundColor: user.isBlocked ? Colors.green : Colors.red,
+            ),
+            onPressed: () async {
+              await _firestoreService.updateUserStatus(
+                userId: user.id,
+                isApproved: user.isApproved,
+                isBlocked: !user.isBlocked,
+              );
+              if (!context.mounted) {
+                return;
+              }
               Navigator.pop(context);
-              Navigator.pop(context); // back to users list
+              Navigator.pop(context);
             },
-            child: const Text("Block"),
+            child: Text(user.isBlocked ? "Unblock" : "Block"),
           ),
         ],
       ),
     );
+  }
+
+  String _roleLabel(UserRole role) {
+    switch (role) {
+      case UserRole.admin:
+        return "Admin";
+      case UserRole.farmer:
+        return "Farmer";
+      case UserRole.customer:
+        return "Customer";
+    }
+  }
+
+  String _statusLabel(AppUser user) {
+    if (user.isBlocked) {
+      return "Blocked";
+    }
+    if (!user.isApproved) {
+      return "Pending";
+    }
+    return "Active";
   }
 }

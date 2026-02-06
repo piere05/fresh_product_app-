@@ -1,9 +1,15 @@
 // ignore_for_file: prefer_const_constructors_in_immutables
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/models/product.dart';
+import '../../data/services/firestore_service.dart';
 
 class ProductDetailsPage extends StatelessWidget {
-  ProductDetailsPage({super.key});
+  ProductDetailsPage({super.key, required this.product});
+
+  final Product product;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -39,25 +45,25 @@ class ProductDetailsPage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // 🏷 PRODUCT NAME
-            const Text(
-              "Tomatoes",
+            Text(
+              product.name,
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 6),
 
             // CATEGORY
-            const Chip(
-              label: Text("Vegetables"),
-              backgroundColor: Color(0xFFD6EAF8),
-              labelStyle: TextStyle(color: Colors.blue),
+            Chip(
+              label: Text(product.category),
+              backgroundColor: const Color(0xFFD6EAF8),
+              labelStyle: const TextStyle(color: Colors.blue),
             ),
 
             const SizedBox(height: 12),
 
             // 💰 PRICE
-            const Text(
-              "₹40 / kg",
+            Text(
+              "₹${product.price.toStringAsFixed(0)} / ${product.unit}",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -90,10 +96,11 @@ class ProductDetailsPage extends StatelessWidget {
 
             const SizedBox(height: 6),
 
-            const Text(
-              "Fresh farm-grown tomatoes harvested daily. "
-              "Rich in nutrients and perfect for cooking and salads.",
-              style: TextStyle(height: 1.4),
+            Text(
+              product.description?.isNotEmpty == true
+                  ? product.description!
+                  : "Fresh produce directly from verified farmers.",
+              style: const TextStyle(height: 1.4),
             ),
 
             const SizedBox(height: 20),
@@ -125,8 +132,17 @@ class ProductDetailsPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      _showSnack(context, "Added to cart (Demo)");
+                    onPressed: () async {
+                      final userId = FirebaseAuth.instance.currentUser?.uid;
+                      if (userId == null) {
+                        _showSnack(context, "Please login to add items to cart");
+                        return;
+                      }
+                      await _firestoreService.addToCart(
+                        userId: userId,
+                        product: product,
+                      );
+                      _showSnack(context, "Added to cart");
                     },
                   ),
                 ),
@@ -141,8 +157,20 @@ class ProductDetailsPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      _showSnack(context, "Added to wishlist (Demo)");
+                    onPressed: () async {
+                      final userId = FirebaseAuth.instance.currentUser?.uid;
+                      if (userId == null) {
+                        _showSnack(
+                          context,
+                          "Please login to add items to wishlist",
+                        );
+                        return;
+                      }
+                      await _firestoreService.addToWishlist(
+                        userId: userId,
+                        product: product,
+                      );
+                      _showSnack(context, "Added to wishlist");
                     },
                   ),
                 ),
@@ -162,7 +190,7 @@ class ProductDetailsPage extends StatelessWidget {
                   ),
                 ),
                 onPressed: () {
-                  _showSnack(context, "Proceed to checkout (Demo)");
+                  _showSnack(context, "Proceed to checkout from cart");
                 },
                 child: const Text("Buy Now", style: TextStyle(fontSize: 16)),
               ),

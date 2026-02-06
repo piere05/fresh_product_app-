@@ -2,9 +2,22 @@
 
 import 'package:flutter/material.dart';
 import 'user_details_page.dart';
+import '../../data/models/app_user.dart';
+import '../../data/services/firestore_service.dart';
+import '../../data/models/user_role.dart';
 
-class UsersPage extends StatelessWidget {
+class UsersPage extends StatefulWidget {
   const UsersPage({super.key}); // NOT const
+
+  @override
+  State<UsersPage> createState() => _UsersPageState();
+}
+
+class _UsersPageState extends State<UsersPage> {
+  final FirestoreService _firestoreService = FirestoreService();
+  String _search = '';
+  String _roleFilter = 'All';
+  String _statusFilter = 'All';
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +34,7 @@ class UsersPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
             child: TextField(
+              onChanged: (value) => setState(() => _search = value),
               decoration: InputDecoration(
                 hintText: "Search users by name or email",
                 prefixIcon: const Icon(Icons.search),
@@ -34,19 +48,51 @@ class UsersPage extends StatelessWidget {
             ),
           ),
 
-          // 🏷 FILTER CHIPS (UI ONLY)
+          // 🏷 FILTER CHIPS
           SizedBox(
             height: 42,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: const [
-                _FilterChip("All"),
-                _FilterChip("Admin"),
-                _FilterChip("Farmer"),
-                _FilterChip("Customer"),
-                _FilterChip("Active"),
-                _FilterChip("Blocked"),
+              children: [
+                _FilterChip(
+                  "All",
+                  selected: _roleFilter == 'All' && _statusFilter == 'All',
+                  onTap: () => setState(() {
+                    _roleFilter = 'All';
+                    _statusFilter = 'All';
+                  }),
+                ),
+                _FilterChip(
+                  "Admin",
+                  selected: _roleFilter == 'Admin',
+                  onTap: () => setState(() => _roleFilter = 'Admin'),
+                ),
+                _FilterChip(
+                  "Farmer",
+                  selected: _roleFilter == 'Farmer',
+                  onTap: () => setState(() => _roleFilter = 'Farmer'),
+                ),
+                _FilterChip(
+                  "Customer",
+                  selected: _roleFilter == 'Customer',
+                  onTap: () => setState(() => _roleFilter = 'Customer'),
+                ),
+                _FilterChip(
+                  "Active",
+                  selected: _statusFilter == 'Active',
+                  onTap: () => setState(() => _statusFilter = 'Active'),
+                ),
+                _FilterChip(
+                  "Blocked",
+                  selected: _statusFilter == 'Blocked',
+                  onTap: () => setState(() => _statusFilter = 'Blocked'),
+                ),
+                _FilterChip(
+                  "Pending",
+                  selected: _statusFilter == 'Pending',
+                  onTap: () => setState(() => _statusFilter = 'Pending'),
+                ),
               ],
             ),
           ),
@@ -55,37 +101,27 @@ class UsersPage extends StatelessWidget {
 
           // 👥 USERS LIST
           Expanded(
-            child: ListView(
-              children: [
-                _userCard(
-                  context,
-                  name: "Ravi Kumar",
-                  email: "ravi@gmail.com",
-                  role: "Customer",
-                  status: "Active",
-                ),
-                _userCard(
-                  context,
-                  name: "Ramesh",
-                  email: "ramesh@farmer.com",
-                  role: "Farmer",
-                  status: "Pending",
-                ),
-                _userCard(
-                  context,
-                  name: "Admin User",
-                  email: "admin@system.com",
-                  role: "Admin",
-                  status: "Active",
-                ),
-                _userCard(
-                  context,
-                  name: "Suresh",
-                  email: "suresh@gmail.com",
-                  role: "Customer",
-                  status: "Blocked",
-                ),
-              ],
+            child: StreamBuilder<List<AppUser>>(
+              stream: _firestoreService.streamUsers(
+                search: _search,
+                role: _roleFilter == 'All' ? null : _roleFilter,
+                status: _statusFilter == 'All' ? null : _statusFilter,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final users = snapshot.data ?? [];
+                if (users.isEmpty) {
+                  return const Center(child: Text("No users found"));
+                }
+                return ListView.builder(
+                  itemCount: users.length,
+                  itemBuilder: (context, index) {
+                    return _userCard(context, users[index]);
+                  },
+                );
+              },
             ),
           ),
         ],
@@ -94,15 +130,11 @@ class UsersPage extends StatelessWidget {
   }
 
   // 👤 USER CARD
-  Widget _userCard(
-    BuildContext context, {
-    required String name,
-    required String email,
-    required String role,
-    required String status,
-  }) {
-    final roleColor = _roleColor(role);
-    final statusColor = _statusColor(status);
+  Widget _userCard(BuildContext context, AppUser user) {
+    final roleLabel = _roleLabel(user.role);
+    final statusLabel = _statusLabel(user);
+    final roleColor = _roleColor(roleLabel);
+    final statusColor = _statusColor(statusLabel);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -114,21 +146,21 @@ class UsersPage extends StatelessWidget {
           backgroundColor: roleColor.withOpacity(0.15),
           child: Icon(Icons.person, color: roleColor),
         ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(email),
+        title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(user.email),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _badge(role, roleColor),
+            _badge(roleLabel, roleColor),
             const SizedBox(height: 4),
-            _badge(status, statusColor, small: true),
+            _badge(statusLabel, statusColor, small: true),
           ],
         ),
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => UserDetailsPage()),
+            MaterialPageRoute(builder: (_) => UserDetailsPage(user: user)),
           );
         },
       ),
@@ -157,6 +189,27 @@ class UsersPage extends StatelessWidget {
     );
   }
 
+  String _roleLabel(UserRole role) {
+    switch (role) {
+      case UserRole.admin:
+        return "Admin";
+      case UserRole.farmer:
+        return "Farmer";
+      case UserRole.customer:
+        return "Customer";
+    }
+  }
+
+  String _statusLabel(AppUser user) {
+    if (user.isBlocked) {
+      return "Blocked";
+    }
+    if (!user.isApproved) {
+      return "Pending";
+    }
+    return "Active";
+  }
+
   // 🎨 ROLE COLOR
   Color _roleColor(String role) {
     switch (role) {
@@ -182,19 +235,24 @@ class UsersPage extends StatelessWidget {
   }
 }
 
-// 🏷 FILTER CHIP (UI ONLY)
+// 🏷 FILTER CHIP
 class _FilterChip extends StatelessWidget {
   final String label;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _FilterChip(this.label);
+  const _FilterChip(this.label, {required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: Chip(
+      child: ChoiceChip(
         label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
         backgroundColor: Colors.blueGrey.withOpacity(0.15),
+        selectedColor: Colors.blueGrey.withOpacity(0.25),
         labelStyle: const TextStyle(color: Colors.blueGrey),
       ),
     );

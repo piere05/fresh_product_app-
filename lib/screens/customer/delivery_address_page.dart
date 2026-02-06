@@ -1,13 +1,17 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'add_address_page.dart';
+import '../../data/models/address.dart';
+import '../../data/services/firestore_service.dart';
 
 class DeliveryAddressPage extends StatelessWidget {
   const DeliveryAddressPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final FirestoreService firestoreService = FirestoreService();
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -19,21 +23,10 @@ class DeliveryAddressPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // 📍 SAVED ADDRESSES
-            _addressCard(
-              title: "Home",
-              address: "12, Anna Nagar, Chennai, Tamil Nadu - 600040",
-              isDefault: true,
+            Expanded(
+              child: _buildAddressList(context, firestoreService),
             ),
-            _addressCard(
-              title: "Office",
-              address: "IT Park Road, Tidel Park, Chennai - 600113",
-              isDefault: false,
-            ),
-
-            const Spacer(),
-
-            // ➕ ADD ADDRESS BUTTON
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -60,12 +53,48 @@ class DeliveryAddressPage extends StatelessWidget {
     );
   }
 
+  Widget _buildAddressList(
+    BuildContext context,
+    FirestoreService firestoreService,
+  ) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return const Center(child: Text("Please login to manage addresses"));
+    }
+
+    return StreamBuilder<List<Address>>(
+      stream: firestoreService.streamAddresses(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final addresses = snapshot.data ?? [];
+        if (addresses.isEmpty) {
+          return const Center(child: Text("No address saved yet"));
+        }
+        return ListView.builder(
+          itemCount: addresses.length,
+          itemBuilder: (context, index) {
+            return _addressCard(
+              context: context,
+              firestoreService: firestoreService,
+              userId: userId,
+              address: addresses[index],
+            );
+          },
+        );
+      },
+    );
+  }
+
   // 📦 ADDRESS CARD
   Widget _addressCard({
-    required String title,
-    required String address,
-    required bool isDefault,
+    required BuildContext context,
+    required FirestoreService firestoreService,
+    required String userId,
+    required Address address,
   }) {
+    final isDefault = address.isDefault;
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -77,7 +106,10 @@ class DeliveryAddressPage extends StatelessWidget {
         ),
         title: Row(
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              address.name,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             if (isDefault) ...[
               const SizedBox(width: 8),
               Container(
@@ -94,11 +126,24 @@ class DeliveryAddressPage extends StatelessWidget {
             ],
           ],
         ),
-        subtitle: Text(address),
+        subtitle: Text(address.formatted),
         trailing: PopupMenuButton<String>(
-          onSelected: (value) {},
+          onSelected: (value) async {
+            if (value == "default") {
+              await firestoreService.setDefaultAddress(
+                userId: userId,
+                addressId: address.id,
+              );
+            }
+            if (value == "delete") {
+              await firestoreService.deleteAddress(
+                userId: userId,
+                addressId: address.id,
+              );
+            }
+          },
           itemBuilder: (_) => const [
-            PopupMenuItem(value: "edit", child: Text("Edit")),
+            PopupMenuItem(value: "default", child: Text("Set Default")),
             PopupMenuItem(value: "delete", child: Text("Delete")),
           ],
         ),

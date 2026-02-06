@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/models/product.dart';
+import '../../data/services/firestore_service.dart';
 
 class AddProductPage extends StatefulWidget {
   const AddProductPage({super.key});
@@ -14,6 +17,7 @@ class _AddProductPageState extends State<AddProductPage> {
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final FirestoreService _firestoreService = FirestoreService();
 
   String _category = "Vegetables";
   String _unit = "kg";
@@ -42,16 +46,40 @@ class _AddProductPageState extends State<AddProductPage> {
     );
   }
 
-  void _saveProduct() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Product added successfully (Frontend demo)"),
-        ),
-      );
-
-      Navigator.pop(context); // go back to product list
+  Future<void> _saveProduct() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please login to add products")),
+      );
+      return;
+    }
+
+    final product = Product(
+      id: '',
+      name: _nameController.text.trim(),
+      category: _category,
+      price: double.tryParse(_priceController.text.trim()) ?? 0,
+      unit: _unit,
+      quantity: double.tryParse(_quantityController.text.trim()) ?? 0,
+      farmerId: userId,
+      description: _descriptionController.text.trim(),
+      inStock: _inStock,
+      createdAt: DateTime.now(),
+    );
+
+    await _firestoreService.addProduct(product);
+
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Product added successfully")),
+    );
+    Navigator.pop(context);
   }
 
   @override

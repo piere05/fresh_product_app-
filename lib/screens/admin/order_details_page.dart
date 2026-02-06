@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../data/models/order.dart';
+import '../../data/services/firestore_service.dart';
 
 class OrderDetailsPage extends StatelessWidget {
-  const OrderDetailsPage({super.key}); // NOT const
+  OrderDetailsPage({super.key, required this.order}); // NOT const
+
+  final Order order;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +26,12 @@ class OrderDetailsPage extends StatelessWidget {
               title: "Order Summary",
               child: Column(
                 children: [
-                  _InfoText("Order ID", "#ORD12345"),
-                  _InfoText("Order Date", "15 Aug 2026"),
-                  _InfoText("Status", "Pending"),
+                  _InfoText(
+                    "Order ID",
+                    "#${order.id.substring(0, 6).toUpperCase()}",
+                  ),
+                  _InfoText("Order Date", _formatDate(order.createdAt)),
+                  _InfoText("Status", order.status),
                 ],
               ),
             ),
@@ -35,9 +43,7 @@ class OrderDetailsPage extends StatelessWidget {
               title: "Customer Details",
               child: Column(
                 children: [
-                  _InfoText("Name", "Ravi Kumar"),
-                  _InfoText("Email", "ravi@gmail.com"),
-                  _InfoText("Phone", "+91 98765 43210"),
+                  _InfoText("User ID", order.userId),
                 ],
               ),
             ),
@@ -49,8 +55,7 @@ class OrderDetailsPage extends StatelessWidget {
               title: "Farmer Details",
               child: Column(
                 children: [
-                  _InfoText("Name", "Ramesh Kumar"),
-                  _InfoText("Location", "Coimbatore"),
+                  _InfoText("Items", "${order.items.length}"),
                 ],
               ),
             ),
@@ -62,10 +67,18 @@ class OrderDetailsPage extends StatelessWidget {
               title: "Products",
               child: Column(
                 children: [
-                  _ProductRow("Tomatoes", "2 kg", "₹80"),
-                  _ProductRow("Onions", "1 kg", "₹40"),
+                  ...order.items.map(
+                    (item) => _ProductRow(
+                      item.name,
+                      "${item.quantity} ${item.unit}",
+                      "₹${item.total.toStringAsFixed(0)}",
+                    ),
+                  ),
                   const Divider(),
-                  _InfoText("Total Amount", "₹120"),
+                  _InfoText(
+                    "Total Amount",
+                    "₹${order.total.toStringAsFixed(0)}",
+                  ),
                 ],
               ),
             ),
@@ -83,8 +96,15 @@ class OrderDetailsPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      _showSnack(context, "Order Approved (Demo)");
+                    onPressed: () async {
+                      await _firestoreService.updateOrderStatus(
+                        orderId: order.id,
+                        status: "Approved",
+                      );
+                      if (!context.mounted) {
+                        return;
+                      }
+                      _showSnack(context, "Order approved");
                     },
                     child: const Text("Approve"),
                   ),
@@ -98,8 +118,15 @@ class OrderDetailsPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      _showSnack(context, "Order Rejected (Demo)");
+                    onPressed: () async {
+                      await _firestoreService.updateOrderStatus(
+                        orderId: order.id,
+                        status: "Cancelled",
+                      );
+                      if (!context.mounted) {
+                        return;
+                      }
+                      _showSnack(context, "Order cancelled");
                     },
                     child: const Text("Reject"),
                   ),
@@ -119,8 +146,15 @@ class OrderDetailsPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onPressed: () {
-                  _showSnack(context, "Order Delivered (Demo)");
+                onPressed: () async {
+                  await _firestoreService.updateOrderStatus(
+                    orderId: order.id,
+                    status: "Delivered",
+                  );
+                  if (!context.mounted) {
+                    return;
+                  }
+                  _showSnack(context, "Order delivered");
                 },
                 child: const Text("Mark as Delivered"),
               ),
@@ -192,15 +226,32 @@ class OrderDetailsPage extends StatelessWidget {
             child: const Text("No"),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              await _firestoreService.updateOrderStatus(
+                orderId: order.id,
+                status: "Cancelled",
+              );
+              if (!context.mounted) {
+                return;
+              }
               Navigator.pop(context);
-              Navigator.pop(context);
+              _showSnack(context, "Order cancelled");
             },
             child: const Text("Yes, Cancel"),
           ),
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'N/A';
+    }
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
   }
 }
 

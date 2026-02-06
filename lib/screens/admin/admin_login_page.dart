@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'admin_dashboard_page.dart';
+import '../../data/models/user_role.dart';
+import '../../data/services/auth_service.dart';
 
 class AdminLoginPage extends StatefulWidget {
   const AdminLoginPage({super.key});
@@ -16,7 +18,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -53,7 +55,11 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      await _authService.signIn(
+        email: email,
+        password: password,
+        role: UserRole.admin,
+      );
 
       // ✅ LOGIN SUCCESS
       Navigator.pushReplacement(
@@ -67,6 +73,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         msg = "Admin not found";
       } else if (e.code == 'wrong-password') {
         msg = "Incorrect password";
+      } else if (e.code == 'account-blocked') {
+        msg = "Account blocked by admin";
       } else if (e.code == 'invalid-credential') {
         msg = "Invalid email or password";
       }

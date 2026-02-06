@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'customer_dashboard_page.dart';
+import '../../data/models/user_role.dart';
+import '../../data/services/auth_service.dart';
 
 class CustomerLoginPage extends StatefulWidget {
   const CustomerLoginPage({super.key});
@@ -11,6 +14,7 @@ class CustomerLoginPage extends StatefulWidget {
 class _CustomerLoginPageState extends State<CustomerLoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
 
@@ -44,7 +48,7 @@ class _CustomerLoginPageState extends State<CustomerLoginPage> {
   }
 
   // ✅ LOGIN FUNCTION
-  void _login() {
+  Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -62,11 +66,39 @@ class _CustomerLoginPageState extends State<CustomerLoginPage> {
       return;
     }
 
-    // ✅ SUCCESS → CUSTOMER DASHBOARD
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const CustomerDashboardPage()),
-    );
+    try {
+      await _authService.signIn(
+        email: email,
+        password: password,
+        role: UserRole.customer,
+      );
+
+      if (!mounted) {
+        return;
+      }
+      // ✅ SUCCESS → CUSTOMER DASHBOARD
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const CustomerDashboardPage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
+      if (e.code == 'role-mismatch') {
+        message = 'This account is not registered as a customer';
+      } else if (e.code == 'account-blocked') {
+        message = 'Your account has been blocked by admin';
+      } else if (e.code == 'user-not-found') {
+        message = 'Customer not found';
+      } else if (e.code == 'wrong-password') {
+        message = 'Incorrect password';
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
 
   @override
