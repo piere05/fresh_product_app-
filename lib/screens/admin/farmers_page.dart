@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'farmer_details_page.dart';
+import '../../data/models/app_user.dart';
+import '../../data/services/firestore_service.dart';
 
 class FarmersPage extends StatefulWidget {
   const FarmersPage({super.key}); // NOT const
@@ -10,22 +12,10 @@ class FarmersPage extends StatefulWidget {
 
 class _FarmersPageState extends State<FarmersPage> {
   String _search = "";
-
-  // 🔹 DEMO FARMER DATA (Frontend only)
-  final List<Map<String, String>> _farmers = [
-    {"name": "Ramesh Kumar", "location": "Coimbatore", "status": "Pending"},
-    {"name": "Suresh", "location": "Salem", "status": "Approved"},
-    {"name": "Manoj", "location": "Madurai", "status": "Blocked"},
-    {"name": "Karthik", "location": "Erode", "status": "Approved"},
-  ];
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
-    // 🔍 SEARCH FILTER
-    final filteredFarmers = _farmers.where((farmer) {
-      return farmer["name"]!.toLowerCase().contains(_search.toLowerCase());
-    }).toList();
-
     return Scaffold(
       backgroundColor: const Color(0xFFE8F5E9),
       appBar: AppBar(
@@ -59,25 +49,29 @@ class _FarmersPageState extends State<FarmersPage> {
 
           // 👨‍🌾 FARMERS LIST
           Expanded(
-            child: filteredFarmers.isEmpty
-                ? const Center(
+            child: StreamBuilder<List<AppUser>>(
+              stream: _firestoreService.streamFarmers(search: _search),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final farmers = snapshot.data ?? [];
+                if (farmers.isEmpty) {
+                  return const Center(
                     child: Text(
                       "No farmers found",
                       style: TextStyle(fontSize: 16),
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: filteredFarmers.length,
-                    itemBuilder: (context, index) {
-                      final farmer = filteredFarmers[index];
-                      return _farmerCard(
-                        context,
-                        name: farmer["name"]!,
-                        location: farmer["location"]!,
-                        status: farmer["status"]!,
-                      );
-                    },
-                  ),
+                  );
+                }
+                return ListView.builder(
+                  itemCount: farmers.length,
+                  itemBuilder: (context, index) {
+                    return _farmerCard(context, farmers[index]);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -85,12 +79,8 @@ class _FarmersPageState extends State<FarmersPage> {
   }
 
   // 👨‍🌾 FARMER CARD
-  Widget _farmerCard(
-    BuildContext context, {
-    required String name,
-    required String location,
-    required String status,
-  }) {
+  Widget _farmerCard(BuildContext context, AppUser farmer) {
+    final status = _statusLabel(farmer);
     Color statusColor;
     switch (status) {
       case "Approved":
@@ -112,8 +102,11 @@ class _FarmersPageState extends State<FarmersPage> {
           backgroundColor: Colors.green.shade100,
           child: const Icon(Icons.agriculture, color: Colors.green),
         ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("Location: $location"),
+        title: Text(
+          farmer.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text("Email: ${farmer.email}"),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -129,10 +122,22 @@ class _FarmersPageState extends State<FarmersPage> {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => FarmerDetailsPage()),
+            MaterialPageRoute(
+              builder: (_) => FarmerDetailsPage(farmer: farmer),
+            ),
           );
         },
       ),
     );
+  }
+
+  String _statusLabel(AppUser farmer) {
+    if (farmer.isBlocked) {
+      return "Blocked";
+    }
+    if (farmer.isApproved) {
+      return "Approved";
+    }
+    return "Pending";
   }
 }

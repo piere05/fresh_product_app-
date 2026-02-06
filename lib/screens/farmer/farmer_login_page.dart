@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'farmer_dashboard_page.dart';
 import 'forgot_password_page.dart';
 import 'create_farmer_account_page.dart';
+import '../../data/models/user_role.dart';
+import '../../data/services/auth_service.dart';
 
 class FarmerLoginPage extends StatefulWidget {
   const FarmerLoginPage({super.key});
@@ -14,6 +17,7 @@ class _FarmerLoginPageState extends State<FarmerLoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
 
@@ -28,7 +32,7 @@ class _FarmerLoginPageState extends State<FarmerLoginPage> {
   }
 
   // ✅ LOGIN FUNCTION
-  void _login() {
+  Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -46,11 +50,42 @@ class _FarmerLoginPageState extends State<FarmerLoginPage> {
       return;
     }
 
-    // ✅ SUCCESS → FARMER DASHBOARD
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const FarmerDashboardPage()),
-    );
+    try {
+      await _authService.signIn(
+        email: email,
+        password: password,
+        role: UserRole.farmer,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      // ✅ SUCCESS → FARMER DASHBOARD
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const FarmerDashboardPage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
+      if (e.code == 'farmer-not-approved') {
+        message = 'Your account is pending approval by admin';
+      } else if (e.code == 'role-mismatch') {
+        message = 'This account is not registered as a farmer';
+      } else if (e.code == 'account-blocked') {
+        message = 'Your account has been blocked by admin';
+      } else if (e.code == 'user-not-found') {
+        message = 'Farmer not found';
+      } else if (e.code == 'wrong-password') {
+        message = 'Incorrect password';
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
 
   @override

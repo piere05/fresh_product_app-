@@ -1,14 +1,25 @@
 import 'package:flutter/material.dart';
+import '../../data/models/app_user.dart';
+import '../../data/services/firestore_service.dart';
 
 class FarmerDetailsPage extends StatefulWidget {
-  const FarmerDetailsPage({super.key}); // NOT const
+  const FarmerDetailsPage({super.key, required this.farmer}); // NOT const
+
+  final AppUser farmer;
 
   @override
   State<FarmerDetailsPage> createState() => _FarmerDetailsPageState();
 }
 
 class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
-  String _status = "Pending"; // Pending | Approved | Blocked
+  final FirestoreService _firestoreService = FirestoreService();
+  late String _status; // Pending | Approved | Blocked
+
+  @override
+  void initState() {
+    super.initState();
+    _status = _statusLabel(widget.farmer);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,8 +56,8 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
 
                     const SizedBox(height: 15),
 
-                    const Text(
-                      "Ramesh Kumar",
+                    Text(
+                      widget.farmer.name,
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -55,9 +66,9 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
 
                     const SizedBox(height: 5),
 
-                    const Text(
-                      "ramesh@farmer.com",
-                      style: TextStyle(color: Colors.grey),
+                    Text(
+                      widget.farmer.email,
+                      style: const TextStyle(color: Colors.grey),
                     ),
 
                     const SizedBox(height: 10),
@@ -77,13 +88,13 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
 
                     const SizedBox(height: 15),
 
-                    _infoRow(Icons.phone, "Phone", "+91 98765 43210"),
                     _infoRow(
-                      Icons.location_on,
-                      "Location",
-                      "Coimbatore, Tamil Nadu",
+                      Icons.phone,
+                      "Phone",
+                      widget.farmer.phone ?? "N/A",
                     ),
-                    _infoRow(Icons.eco, "Farm Type", "Organic"),
+                    _infoRow(Icons.location_on, "Location", "N/A"),
+                    _infoRow(Icons.eco, "Farm Type", "N/A"),
                   ],
                 ),
               ),
@@ -105,10 +116,8 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _status = "Approved";
-                        });
+                      onPressed: () async {
+                        await _updateStatus(isApproved: true, isBlocked: false);
                       },
                     ),
                   ),
@@ -123,10 +132,8 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _status = "Blocked";
-                        });
+                      onPressed: () async {
+                        await _updateStatus(isApproved: false, isBlocked: true);
                       },
                     ),
                   ),
@@ -149,7 +156,7 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
                     ),
                   ),
                   onPressed: () {
-                    _showInfo(context, "Farmer Products (Demo)");
+                    _showInfo(context, "Products view coming soon");
                   },
                 ),
               ),
@@ -232,10 +239,12 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
             child: const Text("Cancel"),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                _status = _status == "Blocked" ? "Approved" : "Blocked";
-              });
+            onPressed: () async {
+              if (_status == "Blocked") {
+                await _updateStatus(isApproved: true, isBlocked: false);
+              } else {
+                await _updateStatus(isApproved: false, isBlocked: true);
+              }
               Navigator.pop(context);
             },
             child: const Text("Confirm"),
@@ -243,5 +252,36 @@ class _FarmerDetailsPageState extends State<FarmerDetailsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _updateStatus({
+    required bool isApproved,
+    required bool isBlocked,
+  }) async {
+    await _firestoreService.updateFarmerStatus(
+      farmerId: widget.farmer.id,
+      isApproved: isApproved,
+      isBlocked: isBlocked,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _status = isBlocked
+          ? "Blocked"
+          : isApproved
+          ? "Approved"
+          : "Pending";
+    });
+  }
+
+  String _statusLabel(AppUser farmer) {
+    if (farmer.isBlocked) {
+      return "Blocked";
+    }
+    if (farmer.isApproved) {
+      return "Approved";
+    }
+    return "Pending";
   }
 }

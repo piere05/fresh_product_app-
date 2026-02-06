@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'product_details_page.dart';
+import '../../data/models/product.dart';
+import '../../data/services/firestore_service.dart';
 
 class BrowseProductsPage extends StatefulWidget {
   const BrowseProductsPage({super.key});
@@ -9,28 +12,13 @@ class BrowseProductsPage extends StatefulWidget {
 }
 
 class _BrowseProductsPageState extends State<BrowseProductsPage> {
-  final List<Map<String, String>> _products = [
-    {"name": "Tomatoes", "price": "₹40 / kg", "category": "Vegetables"},
-    {"name": "Onions", "price": "₹30 / kg", "category": "Vegetables"},
-    {"name": "Apples", "price": "₹120 / kg", "category": "Fruits"},
-    {"name": "Potatoes", "price": "₹25 / kg", "category": "Vegetables"},
-  ];
+  final FirestoreService _firestoreService = FirestoreService();
 
   String _search = "";
   String _selectedCategory = "All";
 
   @override
   Widget build(BuildContext context) {
-    final filteredProducts = _products.where((product) {
-      final matchesSearch = product["name"]!.toLowerCase().contains(
-        _search.toLowerCase(),
-      );
-      final matchesCategory =
-          _selectedCategory == "All" ||
-          product["category"] == _selectedCategory;
-      return matchesSearch && matchesCategory;
-    }).toList();
-
     return Scaffold(
       backgroundColor: const Color(0xFFE3F2FD),
       appBar: AppBar(
@@ -76,19 +64,32 @@ class _BrowseProductsPageState extends State<BrowseProductsPage> {
 
           // 🛒 PRODUCT LIST
           Expanded(
-            child: filteredProducts.isEmpty
-                ? const Center(
+            child: StreamBuilder<List<Product>>(
+              stream: _firestoreService.streamProducts(
+                category: _selectedCategory,
+                search: _search,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final products = snapshot.data ?? [];
+                if (products.isEmpty) {
+                  return const Center(
                     child: Text(
                       "No products found",
                       style: TextStyle(fontSize: 16),
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: filteredProducts.length,
-                    itemBuilder: (context, index) {
-                      return _productCard(context, filteredProducts[index]);
-                    },
-                  ),
+                  );
+                }
+                return ListView.builder(
+                  itemCount: products.length,
+                  itemBuilder: (context, index) {
+                    return _productCard(context, products[index]);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -113,7 +114,7 @@ class _BrowseProductsPageState extends State<BrowseProductsPage> {
   }
 
   // 🧾 PRODUCT CARD
-  Widget _productCard(BuildContext context, Map<String, String> product) {
+  Widget _productCard(BuildContext context, Product product) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       elevation: 4,
@@ -123,7 +124,9 @@ class _BrowseProductsPageState extends State<BrowseProductsPage> {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => ProductDetailsPage()),
+            MaterialPageRoute(
+              builder: (_) => ProductDetailsPage(product: product),
+            ),
           );
         },
         child: Padding(
@@ -145,16 +148,16 @@ class _BrowseProductsPageState extends State<BrowseProductsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product["name"]!,
+                      product.name,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text("Category: ${product["category"]}"),
+                    Text("Category: ${product.category}"),
                     Text(
-                      product["price"]!,
+                      "₹${product.price.toStringAsFixed(0)} / ${product.unit}",
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
@@ -168,10 +171,26 @@ class _BrowseProductsPageState extends State<BrowseProductsPage> {
               IconButton(
                 icon: const Icon(Icons.add_shopping_cart),
                 color: Colors.blue,
-                onPressed: () {
+                onPressed: () async {
+                  final userId = FirebaseAuth.instance.currentUser?.uid;
+                  if (userId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Please login to add items to cart"),
+                      ),
+                    );
+                    return;
+                  }
+                  await _firestoreService.addToCart(
+                    userId: userId,
+                    product: product,
+                  );
+                  if (!context.mounted) {
+                    return;
+                  }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text("${product["name"]} added to cart (Demo)"),
+                      content: Text("${product.name} added to cart"),
                     ),
                   );
                 },

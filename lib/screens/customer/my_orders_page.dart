@@ -1,34 +1,15 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'order_details_page.dart';
+import '../../data/models/order.dart';
+import '../../data/services/firestore_service.dart';
 
 class MyOrdersPage extends StatelessWidget {
   MyOrdersPage({super.key});
 
-  final List<Map<String, String>> orders = [
-    {
-      "id": "#ORD101",
-      "date": "20 Aug 2026",
-      "amount": "₹120",
-      "status": "Pending",
-      "payment": "Cash on Delivery",
-    },
-    {
-      "id": "#ORD102",
-      "date": "18 Aug 2026",
-      "amount": "₹340",
-      "status": "Delivered",
-      "payment": "UPI",
-    },
-    {
-      "id": "#ORD103",
-      "date": "15 Aug 2026",
-      "amount": "₹220",
-      "status": "Cancelled",
-      "payment": "Card",
-    },
-  ];
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -39,21 +20,42 @@ class MyOrdersPage extends StatelessWidget {
         backgroundColor: Colors.blue,
         centerTitle: true,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: orders.length,
-        itemBuilder: (context, index) {
-          final order = orders[index];
-          return _orderCard(context, order);
-        },
-      ),
+      body: _buildOrdersBody(context),
+    );
+  }
+
+  Widget _buildOrdersBody(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return const Center(child: Text("Please login to view orders"));
+    }
+
+    return StreamBuilder<List<Order>>(
+      stream: _firestoreService.streamOrders(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final orders = snapshot.data ?? [];
+        if (orders.isEmpty) {
+          return const Center(child: Text("No orders placed yet"));
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: orders.length,
+          itemBuilder: (context, index) {
+            final order = orders[index];
+            return _orderCard(context, order);
+          },
+        );
+      },
     );
   }
 
   // 🧾 ORDER CARD
-  Widget _orderCard(BuildContext context, Map<String, String> order) {
+  Widget _orderCard(BuildContext context, Order order) {
     Color statusColor;
-    switch (order["status"]) {
+    switch (order.status) {
       case "Delivered":
         statusColor = Colors.green;
         break;
@@ -65,7 +67,7 @@ class MyOrdersPage extends StatelessWidget {
     }
 
     IconData paymentIcon;
-    switch (order["payment"]) {
+    switch (order.paymentMethod) {
       case "UPI":
         paymentIcon = Icons.qr_code;
         break;
@@ -86,19 +88,19 @@ class MyOrdersPage extends StatelessWidget {
           child: const Icon(Icons.receipt_long, color: Colors.blue),
         ),
         title: Text(
-          order["id"]!,
+          "#${order.id.substring(0, 6).toUpperCase()}",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Date: ${order["date"]}"),
-            Text("Amount: ${order["amount"]}"),
+            Text("Date: ${_formatDate(order.createdAt)}"),
+            Text("Amount: ₹${order.total.toStringAsFixed(0)}"),
             Row(
               children: [
                 Icon(paymentIcon, size: 16, color: Colors.grey),
                 const SizedBox(width: 6),
-                Text("Payment: ${order["payment"]}"),
+                Text("Payment: ${order.paymentMethod}"),
               ],
             ),
           ],
@@ -107,7 +109,7 @@ class MyOrdersPage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              order["status"]!,
+              order.status,
               style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
@@ -122,5 +124,15 @@ class MyOrdersPage extends StatelessWidget {
         },
       ),
     );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      return 'N/A';
+    }
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
   }
 }

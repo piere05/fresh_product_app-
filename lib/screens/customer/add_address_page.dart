@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/models/address.dart';
+import '../../data/services/firestore_service.dart';
 
 class AddAddressPage extends StatefulWidget {
   const AddAddressPage({super.key});
@@ -15,14 +18,40 @@ class _AddAddressPageState extends State<AddAddressPage> {
   final _addressController = TextEditingController();
   final _cityController = TextEditingController();
   final _pincodeController = TextEditingController();
+  final FirestoreService _firestoreService = FirestoreService();
 
-  void _saveAddress() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Address added successfully (Demo)")),
-      );
-      Navigator.pop(context);
+  Future<void> _saveAddress() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please login to add address")),
+      );
+      return;
+    }
+
+    final address = Address(
+      id: '',
+      name: _nameController.text.trim(),
+      phone: _phoneController.text.trim(),
+      line1: _addressController.text.trim(),
+      city: _cityController.text.trim(),
+      state: "N/A",
+      postalCode: _pincodeController.text.trim(),
+      line2: '',
+      isDefault: false,
+    );
+
+    await _firestoreService.addAddress(userId: userId, address: address);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Address added successfully")),
+    );
+    Navigator.pop(context);
   }
 
   @override

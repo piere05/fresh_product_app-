@@ -1,9 +1,20 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/models/address.dart';
+import '../../data/models/cart_item.dart';
+import '../../data/services/firestore_service.dart';
 
 class CheckoutPage extends StatefulWidget {
-  const CheckoutPage({super.key});
+  const CheckoutPage({
+    super.key,
+    required this.cartItems,
+    required this.totalAmount,
+  });
+
+  final List<CartItem> cartItems;
+  final double totalAmount;
 
   @override
   State<CheckoutPage> createState() => _CheckoutPageState();
@@ -11,6 +22,7 @@ class CheckoutPage extends StatefulWidget {
 
 class _CheckoutPageState extends State<CheckoutPage> {
   String _selectedPayment = "COD";
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
@@ -29,19 +41,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             // 📍 DELIVERY ADDRESS
             _sectionCard(
               title: "Delivery Address",
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    "Ravi Kumar",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 4),
-                  Text("No. 12, Anna Nagar"),
-                  Text("Chennai, Tamil Nadu - 600001"),
-                  Text("📞 +91 98765 43210"),
-                ],
-              ),
+              child: _buildAddressSection(),
             ),
 
             const SizedBox(height: 15),
@@ -50,11 +50,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
             _sectionCard(
               title: "Order Summary",
               child: Column(
-                children: const [
-                  _RowText("Tomatoes (2 kg)", "₹80"),
-                  _RowText("Onions (1 kg)", "₹30"),
-                  Divider(),
-                  _RowText("Total Amount", "₹110", bold: true),
+                children: [
+                  ...widget.cartItems.map(
+                    (item) => _RowText(
+                      "${item.name} (${item.quantity} ${item.unit})",
+                      "₹${item.total.toStringAsFixed(0)}",
+                    ),
+                  ),
+                  const Divider(),
+                  _RowText(
+                    "Total Amount",
+                    "₹${widget.totalAmount.toStringAsFixed(0)}",
+                    bold: true,
+                  ),
                 ],
               ),
             ),
@@ -104,14 +112,82 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onPressed: () {
-                  _showSuccessDialog(context);
+                onPressed: () async {
+                  await _placeOrder();
                 },
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAddressSection() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return const Text("Please login to select address");
+    }
+
+    return StreamBuilder<List<Address>>(
+      stream: _firestoreService.streamAddresses(userId),
+      builder: (context, snapshot) {
+        final addresses = snapshot.data ?? [];
+        Address? selected;
+        if (addresses.isNotEmpty) {
+          selected = addresses.firstWhere(
+            (address) => address.isDefault,
+            orElse: () => addresses.first,
+          );
+        }
+        if (selected == null) {
+          return const Text("No address saved yet");
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              selected.name,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(selected.formatted),
+            Text("📞 ${selected.phone}"),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _placeOrder() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      _showError("Please login to place an order");
+      return;
+    }
+
+    if (widget.cartItems.isEmpty) {
+      _showError("Cart is empty");
+      return;
+    }
+
+    await _firestoreService.createOrder(
+      userId: userId,
+      items: widget.cartItems,
+      total: widget.totalAmount,
+      paymentMethod: _selectedPayment,
+    );
+    await _firestoreService.clearCart(userId);
+
+    if (!mounted) {
+      return;
+    }
+    _showSuccessDialog(context);
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 

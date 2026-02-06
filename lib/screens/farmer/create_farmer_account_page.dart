@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/services/auth_service.dart';
 
 class CreateFarmerAccountPage extends StatefulWidget {
   const CreateFarmerAccountPage({super.key});
@@ -15,6 +17,7 @@ class _CreateFarmerAccountPageState extends State<CreateFarmerAccountPage> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
 
@@ -27,12 +30,41 @@ class _CreateFarmerAccountPageState extends State<CreateFarmerAccountPage> {
     super.dispose();
   }
 
-  void _createAccount() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Account created successfully (Demo)")),
+  Future<void> _createAccount() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    try {
+      await _authService.registerFarmer(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+        phone: _phoneController.text.trim(),
       );
-      Navigator.pop(context); // back to login
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Account created. Awaiting admin approval."),
+        ),
+      );
+      Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      String message = 'Unable to create account';
+      if (e.code == 'email-already-in-use') {
+        message = 'Email already registered';
+      } else if (e.code == 'weak-password') {
+        message = 'Password is too weak';
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     }
   }
 
